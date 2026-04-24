@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kartu Antrian</title>
+    <script src="http://localhost:3000/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        @media print {
+            @page { margin: 0; size: auto; }
+            html, body { 
+                height: auto !important; 
+                overflow: hidden !important; 
+                margin: 0 !important; 
+                padding: 0 !important;
+            }
+            .container { padding: 0 !important; margin: 0 !important; max-width: 100% !important; border: none !important; }
+            h1, .btn-print, .realtime-card, .btn-back { display: none !important; }
+            .queue-box { 
+                border: 2px dashed #cbd5e1; 
+                margin: 10mm auto !important; 
+                width: 90% !important; 
+                max-width: 350px !important; 
+                box-shadow: none !important;
+                background: white !important;
+                padding: 1.5rem !important;
+                page-break-after: avoid !important;
+                page-break-inside: avoid !important;
+            }
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 450px;
+            background: white;
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .queue-box {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+            padding: 2.5rem 2rem;
+            border-radius: 1.5rem;
+            margin-bottom: 2rem;
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        
+        .queue-box::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 5px;
+            background: linear-gradient(to right, #4f46e5, #818cf8);
+            border-radius: 1.5rem 1.5rem 0 0;
+        }
+
+        .ticket-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 0.5rem;
+        }
+
+        .queue-number {
+            font-size: 4.5rem;
+            font-weight: 900;
+            color: #1e1b4b;
+            margin: 0.5rem 0;
+            line-height: 1;
+            letter-spacing: -2px;
+        }
+
+        .btn-print {
+            width: 100%;
+            padding: 1rem;
+            background: #0f172a;
+            color: white;
+            border: none;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-print:hover { background: #1e293b; transform: translateY(-1px); }
+
+        .data-badge {
+            display: inline-block;
+            background: #f1f5f9;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-family: monospace;
+            font-weight: 600;
+            color: #334155;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1 style="font-weight: 800; letter-spacing: -1px; color: #0f172a; margin-bottom: 2rem;">Antrian Anda</h1>
+        
+        <div class="queue-box" id="ticketCard">
+            <div class="ticket-label">Nomor Antrian</div>
+            <div class="queue-number" id="myQueueNumber">...</div>
+            
+            <div style="margin: 1.5rem 0; text-align: left; background: white; padding: 1rem; border-radius: 1rem; border: 1px solid #f1f5f9;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <span style="font-size: 0.75rem; color: #64748b;">NIK</span>
+                    <span class="data-badge" id="ticketNik">************</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="font-size: 0.75rem; color: #64748b;">KK</span>
+                    <span class="data-badge" id="ticketKk">************</span>
+                </div>
+            </div>
+
+            <div id="qrcode" style="display: flex; justify-content: center; margin: 1rem 0;"></div>
+            
+            <p style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; margin-top: 1rem;">Tunjukkan QR ini ke petugas</p>
+            <div style="font-size: 0.65rem; color: #cbd5e1; margin-top: 0.5rem;" id="printTime"></div>
+            <small id="myQrToken" style="display:none;"></small>
+        </div>
+
+        <button onclick="window.print()" class="btn-print">Cetak Kartu Antrian</button>
+
+        <div class="realtime-card">
+            <h3 style="margin-top: 0; font-size: 1rem;">Live Status Lokasi</h3>
+            <div class="realtime-data">
+                <span>Sedang Dilayani:</span>
+                <strong id="liveCurrent" style="font-size: 1.2rem; color: var(--primary)">-</strong>
+            </div>
+            <div class="realtime-data">
+                <span>Sisa Antrian:</span>
+                <strong id="liveWaiting">-</strong>
+            </div>
+            <div style="margin-top: 1rem;">
+                <strong>Terakhir Selesai:</strong>
+                <div id="liveDone" style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem;">Belum ada
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentLocationId = null;
+        let socket = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('active_queue_token');
+            if (!token) {
+                window.location.href = 'user.html';
+                return;
+            }
+            loadTicketData(token);
+        });
+
+        async function loadTicketData(token) {
+            try {
+                const response = await fetch('/api/reprint-qr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: token })
+                });
+                const res = await response.json();
+
+                if (res.status === 'success') {
+                    const data = res.data;
+                    currentLocationId = data.location_id;
+                    document.getElementById('myQueueNumber').innerText = data.queue_number;
+                    document.getElementById('myQrToken').innerText = data.qr_token;
+                    
+                    // Masking function
+                    const mask = (str) => str ? '************' + str.slice(-4) : '-';
+                    document.getElementById('ticketNik').innerText = mask(data.nik);
+                    document.getElementById('ticketKk').innerText = mask(data.kk);
+                    document.getElementById('printTime').innerText = 'Dicetak: ' + new Date().toLocaleString('id-ID');
+
+                    // Generate QR Code containing the verification URL
+                    const qrContainer = document.getElementById("qrcode");
+                    qrContainer.innerHTML = "";
+                    const verificationUrl = `http://192.168.100.23:8000/frontend-staff.html?token=${data.qr_token}`;
+
+                    new QRCode(qrContainer, {
+                        text: verificationUrl,
+                        width: 200,
+                        height: 200,
+                        colorDark: "#1e1b4b",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+
+                    initRealtime(data.location_id);
+                    fetchInitialStatus(data.location_id);
+                } else {
+                    localStorage.removeItem('active_queue_token');
+                    window.location.href = 'user.html';
+                }
+            } catch (e) {
+                window.location.href = 'user.html';
+            }
+        }
+
+        async function fetchInitialStatus(locId) {
+            try {
+                const response = await fetch(`/api/queue-status/${locId}`);
+                const res = await response.json();
+                if (res.status === 'success') {
+                    updateLiveUI(res.data);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function initRealtime(locId) {
+            try {
+                socket = io('http://localhost:3000');
+                socket.on('connect', () => {
+                    socket.emit('join_location', locId);
+                });
+                socket.on('queue_updated', (data) => {
+                    updateLiveUI(data);
+                });
+            } catch (e) {
+                console.error("Socket.io server tidak berjalan.", e);
+            }
+        }
+
+        function updateLiveUI(data) {
+            document.getElementById('liveCurrent').innerText = data.current;
+            document.getElementById('liveWaiting').innerText = data.total_waiting;
+
+            const doneContainer = document.getElementById('liveDone');
+            if (data.last_done && data.last_done.length > 0) {
+                doneContainer.innerHTML = data.last_done.map(n =>
+                    `<span style="display:inline-block; background:#e5e7eb; padding:2px 6px; border-radius:4px; margin:2px;">${n}</span>`
+                ).join('');
+            } else {
+                doneContainer.innerText = "Belum ada";
+            }
+        }
+    </script>
+
+</body>
+
+</html>
