@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ambil Antrian</title>
+    <script src="http://localhost:3000/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        @media print {
+            body * { visibility: hidden; }
+            .queue-box, .queue-box * { visibility: visible; }
+            .queue-box { position: absolute; left: 0; top: 0; width: 100%; border: none; box-shadow: none; }
+            .realtime-card, .btn-print, .btn-back { display: none !important; }
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 { font-size: 1.5rem; text-align: center; margin-bottom: 1.5rem; }
+
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem; }
+        input, select {
+            width: 100%; padding: 0.75rem; border: 1px solid #d1d5db;
+            border-radius: 0.5rem; box-sizing: border-box; font-size: 1rem;
+        }
+
+        button {
+            width: 100%; padding: 0.75rem; background: var(--primary);
+            color: white; border: none; border-radius: 0.5rem; font-weight: 600;
+            font-size: 1rem; cursor: pointer; margin-top: 1rem;
+        }
+        button:hover { background: var(--primary-hover); }
+
+        /* Status view styles */
+        #statusView { display: none; text-align: center; }
+        .queue-box {
+            background: #eff6ff; border: 2px solid #bfdbfe;
+            padding: 2rem; border-radius: 1rem; margin-bottom: 1.5rem;
+        }
+        .queue-number { font-size: 3rem; font-weight: bold; color: #1e3a8a; }
+        
+        .realtime-card {
+            background: #f9fafb; padding: 1.5rem; border-radius: 0.75rem;
+            margin-top: 1.5rem; text-align: left;
+            border: 1px solid #e5e7eb;
+        }
+
+        .realtime-data { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+        .error { color: #dc2626; text-align: center; font-size: 0.875rem; margin-top: 1rem; }
+        .qr-placeholder {
+            width: 200px; height: 200px; background: #e5e7eb;
+            margin: 1rem auto; display: flex; align-items: center;
+            justify-content: center; border-radius: 0.5rem; color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="formView">
+    <h1>Ambil Antrian</h1>
+    <div class="form-group">
+        <label>Lokasi</label>
+        <select id="location_id" onchange="updateQuotaInfo()">
+            <option value="">Memuat lokasi...</option>
+        </select>
+        <p id="quotaInfo" style="margin-top: 0.5rem; font-size: 0.85rem; font-weight: 600; display: none;">
+            Sisa Kuota: <span id="quotaCount">0</span> Orang
+        </p>
+    </div>
+    <div class="form-group">
+        <label>NIK</label>
+        <input type="text" id="nik" placeholder="16 Digit NIK" maxlength="16">
+    </div>
+    <div class="form-group">
+        <label>KK</label>
+        <input type="text" id="kk" placeholder="16 Digit KK" maxlength="16">
+    </div>
+
+    <!-- Visual Captcha -->
+    <div class="form-group">
+        <label style="color: #64748b; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">Captcha</label>
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <canvas id="captchaCanvas" width="160" height="50" style="background: transparent; cursor: pointer;" title="Klik untuk mengganti CAPTCHA" onclick="generateCaptcha()"></canvas>
+        </div>
+        <label style="color: #64748b; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em;">MASUKAN ANGKA YANG TERLIHAT</label>
+        <input type="text" id="captchaAnswer" placeholder="MASUKAN ANGKA YANG TERLIHAT" style="text-transform: uppercase;">
+    </div>
+    
+    <!-- Disclaimer -->
+    <div class="form-group" style="margin-top: 1.5rem;">
+        <label style="color: #64748b; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">DISCLAIMER</label>
+        <label style="display: flex; gap: 0.5rem; align-items: flex-start; cursor: pointer; font-size: 0.875rem; color: #475569; font-weight: 500; line-height: 1.4;">
+            <input type="checkbox" id="disclaimer" style="width: 1.2rem; height: 1.2rem; margin-top: 0.1rem; flex-shrink: 0;">
+            <span>SAYA MENYATAKAN BAHWA DATA DISAMPAIKAN SUDAH BENAR DAN MEMAHAMI SYARAT YANG BERLAKU, SERTA MENGIKUTI PERATURAN YANG SUDAH DITETAPKAN.</span>
+        </label>
+    </div>
+
+    <button id="btnSubmit">Ambil Antrian</button>
+    
+    <div style="text-align: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+        <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem;">Sudah punya antrian?</p>
+        <button onclick="showReprintForm()" style="background: transparent; color: var(--primary); border: 1px solid var(--primary); font-size: 0.875rem; padding: 0.5rem 1rem;">Cetak Ulang Antrian</button>
+    </div>
+
+<div id="formError" class="error"></div>
+</div>
+
+<script>
+    let expectedCaptchaAnswer = "";
+    let locationsData = [];
+
+    window.addEventListener('DOMContentLoaded', () => {
+        loadLocations();
+        generateCaptcha();
+    });
+
+    function showStatusView(data) {
+        // Save to localStorage so ticket.html can read it
+        localStorage.setItem('active_queue_token', data.qr_token);
+        // Redirect to separate ticket page
+        window.location.href = 'ticket.html';
+    }
+
+    // Load dynamic locations
+    async function loadLocations() {
+        try {
+            const res = await fetch('/api/locations');
+            const result = await res.json();
+            const select = document.getElementById('location_id');
+            
+            if (result.status === 'success' && result.data.length > 0) {
+                locationsData = result.data;
+                select.innerHTML = '<option value="">-- Pilih Lokasi --</option>';
+                result.data.forEach(loc => {
+                    const option = document.createElement('option');
+                    option.value = loc.id;
+                    option.textContent = loc.name;
+                    select.appendChild(option);
+                });
+            } else {
+                select.innerHTML = '<option value="">Tidak ada lokasi tersedia</option>';
+            }
+        } catch (e) {
+            console.error('Failed to load locations', e);
+            document.getElementById('location_id').innerHTML = '<option value="">Gagal memuat lokasi</option>';
+        }
+    }
+
+    function updateQuotaInfo() {
+        const select = document.getElementById('location_id');
+        const infoDiv = document.getElementById('quotaInfo');
+        const countSpan = document.getElementById('quotaCount');
+        const locId = select.value;
+
+        if (!locId) {
+            infoDiv.style.display = 'none';
+            return;
+        }
+
+        const loc = locationsData.find(l => l.id == locId);
+        if (loc) {
+            infoDiv.style.display = 'block';
+            countSpan.innerText = loc.remaining_quota;
+            
+            if (loc.remaining_quota <= 0) {
+                countSpan.style.color = '#dc2626'; // Red
+                infoDiv.style.color = '#dc2626';
+            } else {
+                countSpan.style.color = 'var(--primary)'; // Blue
+                infoDiv.style.color = 'var(--text-muted)';
+            }
+        }
+    }
+
+    function generateCaptcha() {
+        const canvas = document.getElementById('captchaCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        expectedCaptchaAnswer = Math.floor(1000 + Math.random() * 9000).toString();
+        const colors = ['#e11d48', '#d97706', '#2563eb', '#1e1b4b', '#059669', '#7c3aed'];
+        
+        for (let i = 0; i < expectedCaptchaAnswer.length; i++) {
+            ctx.font = 'normal 42px "Outfit", "Inter", sans-serif';
+            ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+            ctx.save();
+            ctx.translate(20 + (i * 35), 40);
+            const angle = (Math.random() - 0.5) * 0.3;
+            ctx.rotate(angle);
+            ctx.fillText(expectedCaptchaAnswer[i], 0, 0);
+            ctx.restore();
+        }
+
+        for (let i = 0; i < 3; i++) {
+            ctx.strokeStyle = '#e879f9';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(Math.random() * 30, Math.random() * canvas.height);
+            ctx.lineTo(canvas.width - Math.random() * 30, Math.random() * canvas.height);
+            ctx.stroke();
+        }
+        document.getElementById('captchaAnswer').value = '';
+    }
+
+    document.getElementById('btnSubmit').addEventListener('click', async () => {
+        const location_id = document.getElementById('location_id').value;
+        const nik = document.getElementById('nik').value;
+        const kk = document.getElementById('kk').value;
+        const captchaInput = document.getElementById('captchaAnswer').value;
+        const disclaimerChecked = document.getElementById('disclaimer').checked;
+
+        if (!location_id || !nik || !kk || nik.length !== 16 || kk.length !== 16) {
+            return Swal.fire('Peringatan', 'Data belum lengkap', 'warning');
+        }
+
+        if (captchaInput.trim() !== expectedCaptchaAnswer) {
+            Swal.fire('Error', 'CAPTCHA salah', 'error');
+            generateCaptcha();
+            return;
+        }
+
+        if (!disclaimerChecked) {
+            return Swal.fire('Peringatan', 'Setujui Disclaimer', 'warning');
+        }
+
+        try {
+            Swal.fire({ title: 'Memproses...', didOpen: () => Swal.showLoading() });
+
+            const response = await fetch('/api/queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ location_id, nik, kk })
+            });
+            const res = await response.json();
+
+            if (res.status === 'success') {
+                showStatusView(res.data);
+            } else {
+                Swal.fire('Gagal', res.message, 'error');
+                generateCaptcha();
+            }
+        } catch (e) {
+            Swal.fire('Error', 'Sistem error', 'error');
+            generateCaptcha();
+        }
+    });
+
+    async function showReprintForm() {
+        const { value: identifier } = await Swal.fire({
+            title: 'Cetak Ulang QR',
+            input: 'text',
+            inputLabel: 'Masukkan NIK atau KK',
+            inputPlaceholder: '16 Digit',
+            showCancelButton: true,
+            confirmButtonText: 'Cari',
+            inputValidator: (value) => { if (!value || value.length < 16) return '16 digit!' }
+        });
+
+        if (identifier) {
+            try {
+                Swal.fire({ title: 'Mencari...', didOpen: () => Swal.showLoading() });
+                const response = await fetch('/api/reprint-qr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier })
+                });
+                const res = await response.json();
+
+                if (res.status === 'success') {
+                    showStatusView(res.data);
+                } else {
+                    Swal.fire('Tidak Ditemukan', res.message, 'error');
+                }
+            } catch (e) {
+                Swal.fire('Error', 'Sistem error', 'error');
+            }
+        }
+    }
+</script>
+
+</body>
+</html>

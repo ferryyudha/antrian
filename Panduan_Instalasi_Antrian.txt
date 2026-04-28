@@ -1,0 +1,68 @@
+# 📘 Panduan Instalasi: Q-Master QR Queue System
+
+Terima kasih telah menggunakan Q-Master! Ikuti langkah-langkah di bawah ini untuk menjalankan aplikasi di server lokal (XAMPP) atau VPS Anda.
+
+## 📋 Persyaratan Sistem
+- PHP >= 8.2
+- MySQL / MariaDB
+- Node.js (untuk Real-time Server)
+- Composer
+- Web Browser Modern (Chrome/Edge)
+
+---
+
+## 🚀 Langkah Instalasi
+
+### 1. Persiapan Database
+1. Buka **phpMyAdmin** Anda.
+2. Buat database baru dengan nama `db_antrian`.
+3. Import file `db_antrian.sql` (jika tersedia) atau biarkan kosong jika Anda ingin menjalankan migrasi Laravel.
+
+### 2. Konfigurasi Aplikasi
+1. Ekstrak folder project ke direktori web server Anda (misal: `C:\xampp\htdocs\Antrian`).
+2. Salin file `.env.example` dan ubah namanya menjadi `.env`.
+3. Buka file `.env` dan sesuaikan pengaturan database:
+   ```env
+   DB_DATABASE=db_antrian
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
+
+### 3. Instalasi Dependensi
+Buka Terminal/CMD di folder project, lalu jalankan:
+```bash
+composer install
+php artisan key:generate
+php artisan migrate
+```
+
+### 4. Menjalankan Real-time Server (Socket.io)
+Aplikasi ini menggunakan WebSockets untuk update data tanpa refresh.
+1. Buka Terminal baru di dalam folder `realtime-server`.
+2. Jalankan perintah:
+   ```bash
+   npm install
+   node server.js
+   ```
+   *Pastikan terminal ini tetap terbuka selama aplikasi berjalan.*
+
+### 5. Menjalankan Aplikasi
+Kembali ke terminal utama (root project), jalankan:
+```bash
+php artisan serve
+```
+Akses aplikasi melalui browser di: `http://localhost:8000`
+
+---
+
+## 📖 Cara Penggunaan
+- **Halaman Pendaftaran**: `http://localhost:8000/user.html`
+- **Dashboard Admin**: `http://localhost:8000/admin.html`
+- **Halaman Staff/Scanner**: `http://localhost:8000/frontend-staff.html`
+
+## 🛠 Troubleshooting
+- **Gagal Connect Real-time**: Pastikan Node.js sudah terinstall dan `server.js` berjalan di port yang benar (cek file `server.js` dan konfigurasi JS di frontend).
+- **Error Database**: Pastikan kredensial di `.env` sesuai dengan settingan XAMPP Anda.
+
+---
+*Dibuat oleh Tim Pengembang Q-Master*
